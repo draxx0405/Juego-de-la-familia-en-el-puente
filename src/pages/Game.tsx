@@ -1,7 +1,7 @@
 import { VStack, Box } from "@chakra-ui/react";
 import GameBar from "../Components/GameBar/GameBar";
 import Fondo from "./../../public/assets/Puente/Fondo.png";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 import Puente from "./../../public/assets/Puente/Puente.png";
 
@@ -47,8 +47,6 @@ import Viejito_C2_L from "./../../public/assets/Viejito/Caminando_2_L.png";
 
 //Assets Lampara
 import Vela_1 from "./../../public/assets/Velas/Vela 1.png"
-import Vela_2 from "./../../public/assets/Velas/Vela 2.png"
-
 
 // Caras
 import Cara_Hombre from "./../../public/assets/Hombre/Cara.png";
@@ -197,7 +195,7 @@ const Game = () => {
             setTime(prev => {
                 const nextTime = Math.max(prev - 1, 0);
 
-                if (nextTime === 0) {
+                if (nextTime === -1) {
                     setHasLost(true);
                     setIsCrossing(false);
                 }
@@ -208,6 +206,13 @@ const Game = () => {
 
         return () => clearInterval(timer);
     }, [isCrossing]);
+
+    const timeRef = useRef(time);
+
+    useEffect(() => {
+        timeRef.current = time;
+    }, [time]);
+
 
     const handleInstrucciones = () => {
         setIsOpen(!isOpen);
@@ -240,25 +245,27 @@ const Game = () => {
 
     const handleButtonClick = (name: string, isSelected: boolean) => {
         setPeople(prev => {
-            // Contar cuántos ya están seleccionados en el mismo lado que la vela
             const selectedCount = prev.filter(p => p.isSelected && p.side === vela.side).length;
-
             return prev.map(p => {
                 if (p.name !== name) return p;
 
-                // Si intentan seleccionar y ya hay 2, no se puede
                 if (isSelected && selectedCount >= 2 && !p.isSelected) {
-                    return p; // no cambia nada
+                    return p;
                 }
-
-                // Solo permitir seleccionar si está en el mismo lado que la vela
                 return { ...p, isSelected: isSelected && p.side === vela.side };
             });
         });
     };
 
-
     const handleAvanzar = () => {
+        if (isCrossing) return;
+
+        if (timeRef.current === 0) {
+            setHasLost(true);
+            setIsCrossing(false);
+            return;
+        }
+
         const selected = peoples.filter(p => p.isSelected);
         if (selected.length === 0) return;
 
@@ -274,9 +281,17 @@ const Game = () => {
 
         let elapsed = 0;
         const offsets: { [key: string]: number } = {};
-        selected.forEach((p, idx) => offsets[p.name] = idx * separation);
+        selected.forEach((p, idx) => (offsets[p.name] = idx * separation));
 
         const interval = setInterval(() => {
+            // 🔹 Checamos el valor actualizado
+            if (timeRef.current === 0) {
+                clearInterval(interval);
+                setHasLost(true);
+                setIsCrossing(false);
+                return;
+            }
+
             elapsed += intervalTime;
 
             setPeople(prev =>
@@ -291,14 +306,15 @@ const Game = () => {
                     const startPos = p.side === "Right" ? p.initialPosition : p.finalPosition;
                     const endPos = p.side === "Right" ? p.finalPosition : p.initialPosition;
 
-                    let newPos = startPos + (endPos - startPos) * ((elapsed - delay) / (slowTime * 1000));
+                    let newPos =
+                        startPos +
+                        (endPos - startPos) * ((elapsed - delay) / (slowTime * 1000));
                     newPos += p.side === "Right" ? offsets[p.name] : -offsets[p.name];
 
                     return { ...p, currentPosition: newPos };
                 })
             );
 
-            // Mover la vela sincronizada
             setVela(prev => {
                 const start = prev.side === "Right" ? prev.initialPosition : prev.finalPosition;
                 const end = prev.side === "Right" ? prev.finalPosition : prev.initialPosition;
@@ -309,7 +325,6 @@ const Game = () => {
             if (elapsed >= (slowest.time ?? 1) * 1000) {
                 clearInterval(interval);
 
-                // Cambiar lado de personajes y fijar posición final
                 setPeople(prev => {
                     const updated = prev.map(p =>
                         p.isSelected
@@ -317,33 +332,29 @@ const Game = () => {
                                 ...p,
                                 side: p.side === "Right" ? "Left" : "Right",
                                 isSelected: false,
-                                currentPosition: p.side === "Right" ? p.finalPosition : p.initialPosition,
+                                currentPosition:
+                                    p.side === "Right" ? p.finalPosition : p.initialPosition,
                             }
                             : p
                     );
 
-                    // Verificamos con el estado actualizado
                     const allLeft = updated.every(p => p.side === "Left");
-                    if (allLeft) {
-                        setHasWon(true);
-                        console.log("¡Ganaste!");
-                    }
-
+                    if (allLeft) setHasWon(true);
                     return updated;
                 });
 
-                // Cambiar lado de la vela y fijar posición
                 setVela(prev => ({
                     ...prev,
                     side: prev.side === "Right" ? "Left" : "Right",
-                    currentPosition: prev.side === "Right" ? prev.finalPosition : prev.initialPosition
+                    currentPosition:
+                        prev.side === "Right" ? prev.finalPosition : prev.initialPosition,
                 }));
 
                 setIsCrossing(false);
             }
-
         }, intervalTime);
     };
+
 
 
     return (
